@@ -123,10 +123,10 @@
 
   /* ── colours ── */
   const GREENS = [
-    '#163a18','#1a4220','#1e4a24','#225228','#265a2c',
-    '#1b5e20','#206425','#256b29','#2a702e','#2e7832',
-    '#1f5c23','#234f26','#2b6830','#306e35','#194820',
-    '#1c4e22','#285e2d','#237028','#1d5525','#2a6432',
+    '#0d2e10','#112e13','#163a18','#1a4a1e','#1e5423',
+    '#256b29','#2a7030','#2d7d32','#357a38','#388e3c',
+    '#3a8f3d','#43a047','#3d7a40','#2e7d32','#1b5e20',
+    '#33691e','#3d6b21','#405e27','#4a7c3f','#4caf50',
   ];
   const ACCENT = [
     '#7cb342','#8bc34a','#aed581',   // yellow-green
@@ -197,8 +197,8 @@
     leaves = [];
 
     // Spacing: tighter = denser. Overlap heavily for lush look.
-    const gx = 30, gy = 26;    // grid cell size in px
-    const jitter = 14;          // random offset within cell
+    const gx = 26, gy = 22;    // grid cell size in px
+    const jitter = 12;          // random offset within cell
 
     const cols = Math.ceil(W / gx) + 2;
     const rows = Math.ceil(H / gy) + 2;
