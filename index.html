@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LeafWall</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { overflow:hidden; background:#060e06; }
+    canvas { display:block; position:fixed; inset:0; cursor:none; }
+    #hint {
+      position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+      color:rgba(255,255,255,0.28); font-size:12px; letter-spacing:.12em;
+      pointer-events:none; font-family:sans-serif;
+      animation: fh 7s ease forwards;
+    }
+    @keyframes fh { 0%{opacity:0} 15%{opacity:1} 70%{opacity:1} 100%{opacity:0} }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">Move your cursor to stir the ivy</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx    = canvas.getContext('2d');
+
+  let W, H;
+  function resize() {
+    W = canvas.width  = innerWidth;
+    H = canvas.height = innerHeight;
+    buildWall();   // rebuild grid on resize
+  }
+
+  /* ── mouse ── */
+  const mouse = { x:-999, y:-999, active:false, vx:0, vy:0 };
+  let pmx = 0, pmy = 0;
+  window.addEventListener('mousemove', e => {
+    mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true;
+  });
+  window.addEventListener('mouseleave', () => { mouse.active = false; mouse.x=-999; mouse.y=-999; });
+  window.addEventListener('touchmove',  e => {
+    mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; mouse.active = true;
+  }, {passive:true});
+
+  /* ────────────────────────────────────────────────────────
+     LEAF SHAPE LIBRARY — Parthenocissus tricuspidata
+     All drawn in local space, centred near (0,0).
+     The petiole attachment point is at (0, +0.5) (bottom).
+  ──────────────────────────────────────────────────────── */
+
+  function ivyAdult(p) {
+    p.moveTo(0, -0.50);
+    p.bezierCurveTo( 0.13,-0.38,  0.20,-0.20,  0.22,-0.08);
+    p.lineTo( 0.24,-0.11); p.lineTo( 0.21,-0.06);
+    p.bezierCurveTo( 0.28, 0.00,  0.48,-0.18,  0.50,-0.08);
+    p.bezierCurveTo( 0.52, 0.00,  0.44, 0.12,  0.32, 0.10);
+    p.lineTo( 0.34, 0.13); p.lineTo( 0.30, 0.11);
+    p.bezierCurveTo( 0.22, 0.18,  0.18, 0.26,  0.14, 0.28);
+    p.lineTo( 0.16, 0.31); p.lineTo( 0.11, 0.29);
+    p.lineTo( 0.10, 0.34); p.lineTo( 0.06, 0.32);
+    p.bezierCurveTo( 0.04, 0.40,  0.02, 0.46,  0.00, 0.50);
+    p.bezierCurveTo(-0.02, 0.46, -0.04, 0.40, -0.06, 0.32);
+    p.lineTo(-0.10, 0.34); p.lineTo(-0.12, 0.29);
+    p.lineTo(-0.16, 0.31); p.lineTo(-0.14, 0.28);
+    p.bezierCurveTo(-0.18, 0.26, -0.22, 0.18, -0.30, 0.11);
+    p.lineTo(-0.34, 0.13); p.lineTo(-0.32, 0.10);
+    p.bezierCurveTo(-0.44, 0.12, -0.52, 0.00, -0.50,-0.08);
+    p.bezierCurveTo(-0.48,-0.18, -0.28, 0.00, -0.21,-0.06);
+    p.lineTo(-0.24,-0.11); p.lineTo(-0.22,-0.06);
+    p.bezierCurveTo(-0.20,-0.20, -0.13,-0.38,  0,-0.50);
+    p.closePath();
+  }
+
+  function ivyYoung(p) {
+    p.moveTo(0,-0.50);
+    p.bezierCurveTo( 0.10,-0.38,  0.16,-0.22,  0.18,-0.10);
+    p.lineTo( 0.20,-0.13); p.lineTo( 0.17,-0.07);
+    p.bezierCurveTo( 0.22, 0.00,  0.38,-0.12,  0.40,-0.04);
+    p.bezierCurveTo( 0.40, 0.04,  0.30, 0.12,  0.22, 0.12);
+    p.lineTo( 0.24, 0.15); p.lineTo( 0.20, 0.13);
+    p.bezierCurveTo( 0.14, 0.20,  0.10, 0.28,  0.08, 0.30);
+    p.lineTo( 0.10, 0.33); p.lineTo( 0.06, 0.31);
+    p.bezierCurveTo( 0.03, 0.38,  0.01, 0.44,  0.00, 0.50);
+    p.bezierCurveTo(-0.01, 0.44, -0.03, 0.38, -0.06, 0.31);
+    p.lineTo(-0.10, 0.33); p.lineTo(-0.08, 0.30);
+    p.bezierCurveTo(-0.10, 0.28, -0.14, 0.20, -0.20, 0.13);
+    p.lineTo(-0.24, 0.15); p.lineTo(-0.22, 0.12);
+    p.bezierCurveTo(-0.30, 0.12, -0.40, 0.04, -0.40,-0.04);
+    p.bezierCurveTo(-0.38,-0.12, -0.22, 0.00, -0.17,-0.07);
+    p.lineTo(-0.20,-0.13); p.lineTo(-0.18,-0.10);
+    p.bezierCurveTo(-0.16,-0.22, -0.10,-0.38,  0,-0.50);
+    p.closePath();
+  }
+
+  function ivyMature(p) {
+    p.moveTo(0,-0.50);
+    p.bezierCurveTo( 0.14,-0.36,  0.22,-0.16,  0.24,-0.04);
+    p.lineTo( 0.26,-0.08); p.lineTo( 0.23,-0.02);
+    p.bezierCurveTo( 0.30, 0.04,  0.52,-0.20,  0.54,-0.06);
+    p.bezierCurveTo( 0.54, 0.04,  0.46, 0.16,  0.34, 0.14);
+    p.lineTo( 0.36, 0.18); p.lineTo( 0.32, 0.15);
+    p.bezierCurveTo( 0.24, 0.22,  0.18, 0.30,  0.14, 0.32);
+    p.lineTo( 0.16, 0.36); p.lineTo( 0.11, 0.33);
+    p.bezierCurveTo( 0.06, 0.40,  0.02, 0.46,  0.00, 0.50);
+    p.bezierCurveTo(-0.02, 0.46, -0.06, 0.40, -0.11, 0.33);
+    p.lineTo(-0.16, 0.36); p.lineTo(-0.14, 0.32);
+    p.bezierCurveTo(-0.18, 0.30, -0.24, 0.22, -0.32, 0.15);
+    p.lineTo(-0.36, 0.18); p.lineTo(-0.34, 0.14);
+    p.bezierCurveTo(-0.46, 0.16, -0.54, 0.04, -0.54,-0.06);
+    p.bezierCurveTo(-0.52,-0.20, -0.30, 0.04, -0.23,-0.02);
+    p.lineTo(-0.26,-0.08); p.lineTo(-0.24,-0.04);
+    p.bezierCurveTo(-0.22,-0.16, -0.14,-0.36,  0,-0.50);
+    p.closePath();
+  }
+
+  // weight toward adult & mature forms
+  const SHAPE_POOL = [
+    ivyAdult, ivyAdult, ivyAdult, ivyAdult,
+    ivyMature, ivyMature, ivyMature,
+    ivyYoung, ivyYoung,
+  ];
+
+  /* ── colours ── */
+  const GREENS = [
+    '#0d2e10','#112e13','#163a18','#1a4a1e','#1e5423',
+    '#256b29','#2a7030','#2d7d32','#357a38','#388e3c',
+    '#3a8f3d','#43a047','#3d7a40','#2e7d32','#1b5e20',
+    '#33691e','#3d6b21','#405e27','#4a7c3f','#4caf50',
+  ];
+  const ACCENT = [
+    '#7cb342','#8bc34a','#aed581',   // yellow-green
+    '#c5e063','#d4e157',             // chartreuse (rare)
+    '#f9a825','#ffb300',             // gold (very rare)
+  ];
+
+  function pickFill() {
+    const r = Math.random();
+    if (r < 0.88) return GREENS[Math.floor(Math.random() * GREENS.length)];
+    if (r < 0.97) return ACCENT[Math.floor(Math.random() * 3)];
+    return ACCENT[3 + Math.floor(Math.random() * 4)];
+  }
+
+  function hexToRgb(hex) {
+    const n = parseInt(hex.replace('#',''), 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+  function lighten(hex, a) {
+    const [r,g,b] = hexToRgb(hex);
+    return `rgb(${Math.min(255,r+a)},${Math.min(255,g+a)},${Math.min(255,b+a)})`;
+  }
+  function darken(hex, a) { return lighten(hex,-a); }
+
+  /* ── vein drawing ── */
+  function drawVeins(veinCol) {
+    ctx.save();
+    ctx.strokeStyle = veinCol;
+    ctx.lineCap = 'round';
+
+    ctx.lineWidth = 0.026; ctx.globalAlpha = 0.32;
+    ctx.beginPath(); ctx.moveTo(0,-0.45); ctx.lineTo(0, 0.46); ctx.stroke();
+
+    const sec = [
+      [-0.28, 40,0.22],[-0.28,-40,0.22],
+      [-0.08, 48,0.20],[-0.08,-48,0.20],
+      [ 0.10, 56,0.18],[ 0.10,-56,0.18],
+      [ 0.26, 65,0.14],[ 0.26,-65,0.14],
+    ];
+    ctx.lineWidth = 0.015; ctx.globalAlpha = 0.22;
+    for (const [y,deg,len] of sec) {
+      const a = (deg * Math.PI / 180) - Math.PI/2;
+      ctx.beginPath();
+      ctx.moveTo(0,y);
+      ctx.lineTo(Math.cos(a)*len, y+Math.sin(a)*len);
+      ctx.stroke();
+    }
+    // lobe veins
+    ctx.lineWidth = 0.012; ctx.globalAlpha = 0.18;
+    ctx.beginPath();
+    ctx.moveTo(0.10,-0.04); ctx.bezierCurveTo(0.28,-0.10,0.42,-0.12,0.46,-0.08);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-0.10,-0.04); ctx.bezierCurveTo(-0.28,-0.10,-0.42,-0.12,-0.46,-0.08);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ────────────────────────────────────────────────────────
+     WALL GRID — leaves rooted to fixed anchor points
+  ──────────────────────────────────────────────────────── */
+  let leaves = [];
+
+  // Pre-bake paths once
+  const PATHS = SHAPE_POOL.map(fn => { const p = new Path2D(); fn(p); return p; });
+
+  function buildWall() {
+    leaves = [];
+
+    // Spacing: tighter = denser. Overlap heavily for lush look.
+    const gx = 30, gy = 26;    // grid cell size in px
+    const jitter = 14;          // random offset within cell
+
+    const cols = Math.ceil(W / gx) + 2;
+    const rows = Math.ceil(H / gy) + 2;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        // stagger every other row
+        const ox = (row % 2) * (gx * 0.5);
+        const ax = -gx + col * gx + ox + (Math.random() - 0.5) * jitter;
+        const ay = -gy + row * gy      + (Math.random() - 0.5) * jitter;
+
+        const fill    = pickFill();
+        const pathIdx = Math.floor(Math.random() * PATHS.length);
+
+        leaves.push({
+          ax, ay,           // anchor (rest) position — never changes
+          x: ax, y: ay,     // current drawn position (tiny oscillation)
+          size: 22 + Math.random() * 22,   // 22–44 px
+          pathIdx,
+          fill,
+          stroke: darken(fill, 28),
+          vein:   lighten(fill, 36),
+          alpha:  0.72 + Math.random() * 0.26,
+
+          // rest angle: leaf hangs from petiole, slight random tilt
+          restAngle: (Math.random() - 0.5) * 0.55,
+          angle:     0,        // current angle, computed each frame
+          dAngle:    0,        // angular velocity (spring)
+
+          // personal sway oscillator
+          phase:  Math.random() * Math.PI * 2,
+          freq:   0.022 + Math.random() * 0.030,
+          amp:    0.07  + Math.random() * 0.10,   // max resting sway (rad)
+
+          // depth layer for parallax wind response (0=back, 1=front)
+          depth:  0.3 + Math.random() * 0.7,
+        });
+      }
+    }
+
+    // Sort back-to-front so larger/front leaves paint on top
+    leaves.sort((a,b) => a.depth - b.depth);
+  }
+
+  /* ════════════════════════════════════════════════════════
+     BUTTERFLY
+  ════════════════════════════════════════════════════════ */
+  class Butterfly {
+    constructor() {
+      this.x  = Math.random() * W;
+      this.y  = Math.random() * H;
+      this.vx = 0; this.vy = 0;
+      this.flapT    = 0;          // flap phase timer
+      this.flapFreq = 0.10;       // wing-beat frequency (radians/frame)
+      this.heading  = Math.random() * Math.PI * 2;
+      this.speed    = 1.4 + Math.random() * 1.0;
+      this.targetX  = Math.random() * W;
+      this.targetY  = Math.random() * H;
+      this.wobbleT  = 0;          // lateral bob phase
+      this.startled = false;
+      this.startledCooldown = 0;
+      this.pickTarget();
+    }
+
+    pickTarget(avoidX, avoidY) {
+      /* choose a point comfortably inside the canvas */
+      const margin = 80;
+      if (avoidX !== undefined) {
+        /* flee: pick a point roughly away from the threat */
+        const angle = Math.atan2(this.y - avoidY, this.x - avoidX)
+                      + (Math.random() - 0.5) * 1.4;
+        const dist  = 200 + Math.random() * 280;
+        this.targetX = Math.max(margin, Math.min(W - margin, this.x + Math.cos(angle) * dist));
+        this.targetY = Math.max(margin, Math.min(H - margin, this.y + Math.sin(angle) * dist));
+      } else {
+        this.targetX = margin + Math.random() * (W - margin * 2);
+        this.targetY = margin + Math.random() * (H - margin * 2);
+      }
+      this.speed = 1.6 + Math.random() * 1.4;
+      if (this.startled) this.speed *= 2.2;  // flee faster
+    }
+
+    update(dt, t) {
+      this.flapT  += this.flapFreq * dt * (this.startled ? 1.8 : 1.0);
+      this.wobbleT += 0.028 * dt;
+
+      /* steer toward target */
+      const tdx = this.targetX - this.x;
+      const tdy = this.targetY - this.y;
+      const tdist = Math.sqrt(tdx*tdx + tdy*tdy);
+
+      if (tdist < 30) this.pickTarget();     // arrived — wander to new spot
+
+      const targetHeading = Math.atan2(tdy, tdx);
+      /* smooth turn — wrap angle delta */
+      let dh = targetHeading - this.heading;
+      while (dh >  Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      this.heading += dh * 0.045 * dt;
+
+      /* lateral figure-8 bob perpendicular to heading */
+      const perpX = -Math.sin(this.heading);
+      const perpY =  Math.cos(this.heading);
+      const bob   = Math.sin(this.wobbleT * 2) * 0.5;
+
+      this.vx = Math.cos(this.heading) * this.speed + perpX * bob;
+      this.vy = Math.sin(this.heading) * this.speed + perpY * bob;
+
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+
+      /* wrap at canvas edges */
+      if (this.x < -60) this.x = W + 60;
+      if (this.x > W+60) this.x = -60;
+      if (this.y < -60) this.y = H + 60;
+      if (this.y > H+60) this.y = -60;
+
+      /* mouse repulsion */
+      if (mouse.active) {
+        const mdx = this.x - mouse.x, mdy = this.y - mouse.y;
+        const md  = Math.sqrt(mdx*mdx + mdy*mdy);
+        if (md < 120 && this.startledCooldown <= 0) {
+          this.startled = true;
+          this.startledCooldown = 90;
+          this.pickTarget(mouse.x, mouse.y);
+          this.flapFreq = 0.18;
+        }
+      }
+
+      if (this.startledCooldown > 0) {
+        this.startledCooldown -= dt;
+        if (this.startledCooldown <= 0) {
+          this.startled = false;
+          this.flapFreq = 0.10 + Math.random() * 0.04;
+          this.speed    = 1.4  + Math.random() * 1.0;
+        }
+      }
+    }
+
+    draw() {
+      /* wing flap: map sine to a 0..1 "open" value, then scale Y */
+      const flapVal  = (Math.sin(this.flapT) + 1) * 0.5;  // 0=closed 1=open
+      const wingOpenY = 0.25 + flapVal * 0.75;             // never fully closed
+
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      /* face in direction of travel */
+      ctx.rotate(this.heading + Math.PI / 2);
+
+      const S = 26;  // scale in px
+
+      /* ── upper wings ── */
+      ctx.save();
+      ctx.scale(S, S * wingOpenY);
+
+      /* right upper wing */
+      this._wing(ctx, 1);
+      /* left upper wing */
+      ctx.save(); ctx.scale(-1, 1); this._wing(ctx, 1); ctx.restore();
+
+      ctx.restore();
+
+      /* ── lower wings (smaller, offset down a bit) ── */
+      ctx.save();
+      ctx.translate(0, S * 0.18);
+      ctx.scale(S * 0.72, S * 0.65 * wingOpenY);
+
+      this._lowerWing(ctx, 1);
+      ctx.save(); ctx.scale(-1, 1); this._lowerWing(ctx, 1); ctx.restore();
+
+      ctx.restore();
+
+      /* ── body ── */
+      ctx.save();
+      ctx.scale(S * 0.10, S * 0.55);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 1, 1, 0, 0, Math.PI*2);
+      ctx.fillStyle   = '#1a0f00';
+      ctx.globalAlpha = 0.92;
+      ctx.fill();
+      ctx.restore();
+
+      /* ── antennae ── */
+      ctx.save();
+      ctx.strokeStyle = '#2c1a00';
+      ctx.lineWidth   = 0.9;
+      ctx.globalAlpha = 0.85;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * 2, -S * 0.5);
+        ctx.quadraticCurveTo(side * 10, -S * 0.95, side * 13, -S * 1.1);
+        ctx.stroke();
+        /* knob at tip */
+        ctx.beginPath();
+        ctx.arc(side * 13, -S * 1.1, 2, 0, Math.PI*2);
+        ctx.fillStyle = '#2c1a00';
+        ctx.fill();
+      }
+      ctx.restore();
+
+      ctx.restore();
+    }
+
+    /* right upper wing (caller handles mirroring for left) */
+    _wing(c, _side) {
+      c.save();
+      c.globalAlpha = 0.88;
+
+      /* main wing fill — Monarch-style amber/orange */
+      c.beginPath();
+      c.moveTo(0, -0.08);
+      c.bezierCurveTo( 0.30, -0.55,  0.90, -0.60,  1.00, -0.20);
+      c.bezierCurveTo( 1.02,  0.10,  0.70,  0.35,  0.10,  0.30);
+      c.closePath();
+
+      c.fillStyle = '#e07b00';
+      c.fill();
+
+      /* black border overlay */
+      c.lineWidth   = 0.12;
+      c.strokeStyle = '#1a0800';
+      c.stroke();
+
+      /* inner orange lighter area */
+      c.beginPath();
+      c.moveTo(0.06, -0.06);
+      c.bezierCurveTo( 0.28, -0.46,  0.75, -0.50,  0.84, -0.18);
+      c.bezierCurveTo( 0.86,  0.06,  0.60,  0.24,  0.10,  0.22);
+      c.closePath();
+      c.fillStyle = '#f59300';
+      c.fill();
+
+      /* white spot clusters near outer edge */
+      c.fillStyle = 'rgba(255,255,255,0.75)';
+      const spots = [
+        [0.88,-0.38, 0.045],[0.94,-0.22, 0.035],[0.92,-0.05, 0.040],
+        [0.78,-0.48, 0.030],[0.68,-0.52, 0.028],
+      ];
+      for (const [sx,sy,sr] of spots) {
+        c.beginPath(); c.arc(sx, sy, sr, 0, Math.PI*2); c.fill();
+      }
+
+      /* black veins */
+      c.strokeStyle = 'rgba(20,8,0,0.45)';
+      c.lineWidth   = 0.04;
+      for (const [ex, ey] of [[0.85,-0.42],[0.92,-0.15],[0.65,0.18],[0.35,0.24]]) {
+        c.beginPath(); c.moveTo(0.05, 0.05); c.lineTo(ex, ey); c.stroke();
+      }
+
+      c.restore();
+    }
+
+    /* right lower wing */
+    _lowerWing(c, _side) {
+      c.save();
+      c.globalAlpha = 0.85;
+
+      c.beginPath();
+      c.moveTo(0.04,  0.00);
+      c.bezierCurveTo( 0.30, -0.30,  0.95, -0.25,  1.00,  0.10);
+      c.bezierCurveTo( 1.00,  0.45,  0.65,  0.70,  0.05,  0.55);
+      c.closePath();
+      c.fillStyle = '#d06800';
+      c.fill();
+
+      c.lineWidth = 0.13; c.strokeStyle = '#1a0800'; c.stroke();
+
+      /* lighter inner area */
+      c.beginPath();
+      c.moveTo(0.08, 0.04);
+      c.bezierCurveTo( 0.28, -0.20,  0.80, -0.18,  0.84,  0.10);
+      c.bezierCurveTo( 0.84,  0.36,  0.56,  0.56,  0.08,  0.44);
+      c.closePath();
+      c.fillStyle = '#f08000';
+      c.fill();
+
+      /* white spots along outer edge */
+      c.fillStyle = 'rgba(255,255,255,0.70)';
+      const spots = [
+        [0.86, 0.00, 0.040],[0.92, 0.20, 0.038],[0.84, 0.40, 0.038],
+        [0.70, 0.58, 0.032],[0.50, 0.65, 0.030],
+      ];
+      for (const [sx,sy,sr] of spots) {
+        c.beginPath(); c.arc(sx, sy, sr, 0, Math.PI*2); c.fill();
+      }
+
+      /* blue shimmer patch (inner lower corner — classic Monarch detail) */
+      c.fillStyle = 'rgba(100,140,220,0.30)';
+      c.beginPath(); c.ellipse(0.22, 0.46, 0.14, 0.10, -0.3, 0, Math.PI*2); c.fill();
+
+      c.restore();
+    }
+  }
+
+  const butterfly = new Butterfly();
+
+  /* ── global wind ── */
+  const wind = { angle: 0, speed: 0, target: 0, timer: 0 };
+  function newWindTarget() {
+    wind.target = (Math.random() - 0.3) * 0.18;   // gentle sway target (rad)
+    wind.timer  = 120 + Math.random() * 300;
+  }
+  newWindTarget();
+
+  /* ── main loop ── */
+  let t    = 0;
+  let last = performance.now();
+
+  function loop(now) {
+    const raw = (now - last) / 16.67;
+    const dt  = Math.min(raw, 3);
+    last = now;
+    t   += dt;
+
+    /* smooth mouse force */
+    const mvx = mouse.x - pmx, mvy = mouse.y - pmy;
+    pmx = mouse.x; pmy = mouse.y;
+    const mspd   = Math.sqrt(mvx*mvx + mvy*mvy);
+    const mForce = mouse.active ? Math.min(mspd / 16, 1) : 0;
+
+    /* wind update */
+    wind.timer -= dt;
+    if (wind.timer <= 0) newWindTarget();
+    wind.speed += (wind.target - wind.speed) * 0.008 * dt;
+
+    /* ── background ── */
+    ctx.fillStyle = '#060e06';
+    ctx.fillRect(0, 0, W, H);
+
+    /* ── cursor glow ── */
+    if (mouse.active && mForce > 0.03) {
+      const gr = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 160 + mForce*80);
+      gr.addColorStop(0, `rgba(50,120,50,${mForce*0.09})`);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    /* ── draw leaves ── */
+    for (const lf of leaves) {
+      // distance from cursor
+      const dx    = lf.ax - mouse.x;
+      const dy    = lf.ay - mouse.y;
+      const dist2 = dx*dx + dy*dy;
+      const RAD   = 150 + mForce * 100;
+
+      /* spring-based angular sway
+         target = resting tilt + wind + personal oscillation + mouse push */
+      const personalSway = Math.sin(t * lf.freq + lf.phase) * lf.amp;
+      let targetAngle    = lf.restAngle + wind.speed * lf.depth * 3 + personalSway;
+
+      if (mouse.active && dist2 < RAD*RAD && dist2 > 1) {
+        const dist  = Math.sqrt(dist2);
+        const push  = (1 - dist/RAD) * mForce * 0.9 * lf.depth;
+        targetAngle += (dx < 0 ? -push : push);   // blow away from cursor
+      }
+
+      // spring: dAngle pulls toward targetAngle
+      const stiffness = 0.14, damping = 0.72;
+      lf.dAngle += (targetAngle - lf.angle) * stiffness * dt;
+      lf.dAngle *= Math.pow(damping, dt);
+      lf.angle  += lf.dAngle * dt;
+
+      /* tiny positional drift (max ±3px) — gives organic feel */
+      const px = Math.sin(t * lf.freq * 0.7 + lf.phase + 1) * 2.5 * lf.depth;
+      const py = Math.cos(t * lf.freq * 0.5 + lf.phase + 2) * 1.5 * lf.depth;
+
+      /* draw */
+      ctx.save();
+      ctx.translate(lf.ax + px, lf.ay + py);
+      ctx.rotate(lf.angle);
+      ctx.scale(lf.size, lf.size);
+      ctx.globalAlpha = lf.alpha;
+
+      ctx.fillStyle   = lf.fill;
+      ctx.strokeStyle = lf.stroke;
+      ctx.lineWidth   = 0.030;
+      ctx.fill(PATHS[lf.pathIdx]);
+      ctx.stroke(PATHS[lf.pathIdx]);
+      drawVeins(lf.vein);
+
+      ctx.restore();
+    }
+
+    /* ── butterfly ── */
+    butterfly.update(dt, t);
+    butterfly.draw();
+
+    /* ── cursor indicator ── */
+    if (mouse.active) {
+      ctx.save();
+      ctx.translate(mouse.x, mouse.y);
+      const r = 6 + mForce * 12;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(200,255,180,${0.15 + mForce*0.3})`;
+      ctx.lineWidth   = 1.4;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  /* kick off */
+  resize();
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
